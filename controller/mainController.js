@@ -13,16 +13,15 @@ exports.getCounts = (req, res, next) => {
     fetch("http://assignment.envanterium.com/inputs/counts.json")
         .then((res) => res.json())
         .then((json) => {
-            const contentsMain = [];
             for (let i = 0; i < json.length; i++) {
                 // console.log(json[i].completedCounts[0].contents)
-
+                let contentsMain = [];
                 for (
                     let j = 0;
                     j < json[i].completedCounts[0].contents.length;
                     j++
                 ) {
-                    const contentsObject = {
+                    let contentsObject = {
                         barcode: json[i].completedCounts[0].contents[j].barcode,
                         amount: json[i].completedCounts[0].contents[j].amount,
                     };
@@ -39,15 +38,14 @@ exports.getCounts = (req, res, next) => {
                 // };
 
                 // contentsMain.push(contentsObject);
-                const count = new Counts({
-                    id: json[i].id,
-                    locationCode: json[i].locationCode,
-                    completedCounts: [
-                        {
-                            totalAmount: json[i].completedCounts[0].totalAmount,
-                            contents: contentsMain,
-                        },
-                    ],
+                let count = new Counts({
+                    "id": json[i].id,
+                    "locationCode": json[i].locationCode,
+                    "completedCounts":
+                    {
+                        "totalAmount": json[i].completedCounts[0].totalAmount,
+                        "contents": contentsMain,
+                    }
                 });
                 console.log(count);
                 count.save();
@@ -119,53 +117,109 @@ exports.getFirstTxtData = (req, res, next) => {
 };
 
 exports.getSecondTxtData = (req, res, next) => {
-    Counts.find(
-        {},
-        { locationCode: 1, completedCounts: 1 },
-        function (err, data) {
-            if (err) {
-                console.log(err);
-            } else {
-                for (let i = 0; i < data.length; i++) {
-                    console.log("birinci for");
-                    for (
-                        let j = 0;
-                        j < data[i].completedCounts[0].contents.length;
-                        j++
-                    ) {
-                        Counts.find(
-                            {},
-                            {
-                                completedCounts: {
-                                    $elemMatch: {
-                                        contents: {
-                                            $elemMatch: {
-                                                barcode:
-                                                    data[i].completedCounts[0]
-                                                        .contents[j].barcode,
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                            function (err, result) {
-                                console.log(result);
-                            }
-                        );
-                        
-                    }
+    /* Counts.find({},
+        {
+            completedCounts: {
+                $elemMatch: {
+                    contents: {
+                        $elemMatch: {
+                            barcode:
+                                data[i].completedCounts[0]
+                                    .contents[j].barcode,
+                        },
+                    },
+                },
+            },
+        },
+        function (err, result) {
+            console.log(result);
+        }
+        .exec((err, result) => {
+        if (err) {
+            console.log("error", err);
+        }
+        if (result) {
+            console.log(result.length);
+        }
+    })
+    ); */
+    Counts.aggregate([
+        { "$unwind": "$completedCounts" },
+        { "$unwind": "$completedCounts.contents" },
+        {
+            "$group": {
+                "_id": "$completedCounts.contents.barcode",
+                "Total": { "$sum": "$completedCounts.contents.amount" }
+            }
+        },
+        /* {
+            $lookup:
+            {
+                from: Masters.collection.name,
+                localField: "_id",
+                foreignField: "barcode",
+                as: "custom_barcode"
+            }
+        }, */
+        /* {
+            "$match": {
+                "custom_barcode": "$ne: []",
+            }
+        }, */
+        { "$sort": { "Total": 1 } },
+        /* {
+            $group: {
+                "completedCounts.contents.barcode": null,
+            }
+        },
+        {
+            $match: {
+                "completedCounts.contents.barcode": {
+                    $eq: "15789283166"
                 }
             }
+        },
+        {
+            $count: "passing_scores"
+        } */
+    ]).exec((err, result) => {
+        if (err) {
+            console.log("error", err);
         }
-    );
+        if (result) {
+            let idArray = [];
+            let totalArray = [];
+            result.map(function (e) {
+                idArray.push(e._id);
+                totalArray.push(e.Total);
+            });
+            writeToTxt(idArray, totalArray);
+            console.log("okey");
+        }
+    })
 };
+
+function writeToTxt(idArr, totalArr) {
+    const fs = require("fs");
+    for (let i = 0; i < idArr.length; i++) {
+        let data = idArr[i] + ";" + totalArr[i] + "\n";
+        fs.appendFile("test2.txt", data, function (err) {
+            /* if (err) {
+                return console.log(err);
+            }
+            console.log("The data added"); */
+        });
+    }
+}
 
 exports.getThirdTxtData = (req, res, next) => {
     Counts.aggregate([
+        { "$unwind": "$completedCounts" },
+        { "$unwind": "$completedCounts.contents" },
         {
             $lookup: {
                 from: "masters",
-                localField: "barcode",
+                localField: "completedCounts.contents.barcode",
                 foreignField: "barcode",
                 as: "custom_barcode",
             },
@@ -175,9 +229,10 @@ exports.getThirdTxtData = (req, res, next) => {
             console.log("error", err);
         }
         if (result) {
-            console.log(result.length);
-            console.log(result[0].locationCode);
-            console.log(result[0].id);
+            result.map(function (e) {
+                console.log(e.custom_barcode);
+            });
+            console.log("okey");
         }
     });
 
